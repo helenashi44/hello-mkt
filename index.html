@@ -214,10 +214,35 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 
 function deepClone(obj){return JSON.parse(JSON.stringify(obj));}
 
-function init(){
+async function init(){
   renderLib();
-  // 检查URL参数里有没有data
   const params = new URLSearchParams(window.location.search);
+
+  // 方案1：从Gist读取
+  const gistId = params.get('gist');
+  if(gistId){
+    try{
+      toast('⏳ 加载内容中...');
+      const res = await fetch(`https://api.github.com/gists/${gistId}`);
+      const gist = await res.json();
+      const content = gist.files['slides.json'].content;
+      const data = JSON.parse(content);
+      if(Array.isArray(data) && data.length > 0 && data.every(s=>s.msgs)){
+        data.forEach(s=>{s.name=s.name||'';s.date=s.date||'';s.bg=s.bg||'#f0f0f5';});
+        SLIDES.length=0;
+        data.forEach(s=>SLIDES.push(s));
+        renderList();
+        load(0);
+        toast('✓ 已导入 '+SLIDES.length+' 张图片');
+        return;
+      }
+    }catch(e){
+      console.warn('Gist读取失败:', e);
+      toast('❌ 加载失败，请检查链接');
+    }
+  }
+
+  // 方案2：从URL参数读取（备用）
   const dataParam = params.get('data');
   if(dataParam){
     try{
@@ -236,6 +261,7 @@ function init(){
       console.warn('URL参数解析失败:', e);
     }
   }
+
   renderList();
   load(0);
 }
