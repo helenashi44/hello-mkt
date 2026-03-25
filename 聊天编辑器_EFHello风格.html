@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>聊天图片编辑器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--chat-bg:#f0f0f5;--header-bg:#f0f0f5;--me:#4d49fa;--ol:#f6f6f8;--tr:rgba(0,0,0,0.06);--me-tr:rgba(77,73,250,0.12);}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,'PingFang SC',sans-serif;background:#1a1a2e;color:#eee;display:flex;height:100vh;overflow:hidden;}
+
+.slide-list{width:130px;background:#16213e;border-right:1px solid #0f3460;overflow-y:auto;flex-shrink:0;user-select:none;}
+.slide-list h3{font-size:10px;color:#666;padding:10px 8px 6px;letter-spacing:.08em;text-transform:uppercase;}
+.thumb{padding:7px;cursor:grab;border-bottom:1px solid #0f3460;position:relative;transition:background 0.12s;}
+.thumb:hover{background:#0f3460;}
+.thumb.active{background:#0f3460;border-left:3px solid #5b5bd6;}
+.thumb.drag-over{border-top:2px solid #e06c75;}
+.thumb.dragging{opacity:0.4;}
+.thumb .num{font-size:9px;color:#666;margin-bottom:3px;}
+.thumb .prev{width:100%;height:52px;border-radius:5px;overflow:hidden;position:relative;}
+.thumb .prev-name{position:absolute;top:3px;left:0;right:0;text-align:center;font-size:7px;color:#fff;font-weight:600;}
+.thumb-actions{display:none;position:absolute;top:4px;right:4px;gap:3px;}
+.thumb:hover .thumb-actions{display:flex;}
+.ta-btn{background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:3px;width:16px;height:16px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+.ta-btn:hover{background:#e06c75;}
+.ta-btn.dup:hover{background:#98c379;}
+
+.center{flex:1;display:flex;flex-direction:column;align-items:center;padding:16px;overflow-y:auto;background:#1a1a2e;}
+.top-bar{display:flex;gap:8px;margin-bottom:14px;align-items:center;width:100%;max-width:460px;}
+.top-bar h2{font-size:13px;color:#aaa;flex:1;}
+.btn{padding:7px 13px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;}
+.btn-dl{background:#5b5bd6;color:#fff;}
+.btn-all{background:#e06c75;color:#fff;}
+.btn-dup{background:#c678dd;color:#fff;}
+.btn-paste{background:#98c379;color:#222;}
+
+.screen{width:390px;background:var(--chat-bg);border-radius:14px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.5);}
+.s-header{background:var(--header-bg);padding:14px 16px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(0,0,0,0.06);}
+.s-back{color:#333;font-size:22px;}
+.s-name{color:#1a1a2e;font-size:17px;font-weight:600;flex:1;cursor:pointer;}
+.s-name:hover{text-decoration:underline;}
+.s-body{padding:14px 12px 22px;}
+.date-row{text-align:center;margin-bottom:13px;}
+.date-row span{background:rgba(0,0,0,0.08);color:#666;font-size:11px;border-radius:10px;padding:3px 10px;cursor:pointer;}
+
+.msg-group{display:flex;margin-bottom:10px;align-items:flex-end;gap:0px;position:relative;}
+.msg-group.me{flex-direction:row-reverse;}
+.bubbles{display:flex;flex-direction:column;gap:2px;max-width:82%;}
+.msg-group.me .bubbles{align-items:flex-end;}
+.bub{border-radius:18px;padding:10px 14px;font-size:13.5px;line-height:1.55;word-break:break-word;cursor:pointer;max-width:100%;}
+.bub:hover{outline:2px solid rgba(255,255,255,0.35);}
+.bub.sel{outline:2px solid #e06c75!important;}
+.bub.me{background:var(--me);color:#fff;border-radius:22px 22px 8px 22px;}
+.bub.ot{background:#f6f6f8;color:#1a1a2e;border-radius:22px 22px 22px 8px;}
+.bub.ol{background:#f6f6f8;color:#1a1a2e;border-radius:22px 22px 22px 8px;}
+.bub.tr{background:rgba(0,0,0,0.05);border-radius:8px;padding:4px 11px;font-size:11.5px;color:#666;}
+.bub.tr.me{background:rgba(77,73,250,0.1);color:#4d49fa;border-radius:8px;}
+
+.bub.sticker{background:transparent!important;padding:0!important;cursor:pointer;}
+.bub.sticker img,.bub.sticker .emo{width:80px;height:80px;object-fit:contain;display:block;font-size:72px;line-height:1;}
+.bub.sticker:hover{outline:2px dashed rgba(255,255,255,0.5)!important;}
+.ts{font-size:10.5px;color:rgba(80,80,100,0.55);margin-top:3px;padding:0 2px;}
+.msg-group.me .ts{text-align:right;}
+
+.os-line{font-size:11.5px;color:rgba(60,60,80,0.6);font-style:italic;text-align:center;margin:3px 0 5px;cursor:pointer;}
+.os-line:hover{text-decoration:underline;}
+.del-btn{position:absolute;top:0;right:-26px;background:#e06c75;color:#fff;border:none;border-radius:50%;width:19px;height:19px;font-size:11px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:10;}
+.msg-group:hover .del-btn{display:flex;}
+.know{background:#fff;border-radius:14px;padding:14px 16px;font-size:13px;color:#333;line-height:1.75;cursor:pointer;margin:4px 0;}
+.know:hover{outline:2px solid rgba(255,255,255,0.5);}
+.know-title{font-size:13.5px;font-weight:700;color:#3a5a7a;margin-bottom:11px;}
+.kw{font-weight:700;font-size:13px;color:#1a1a2e;margin-top:8px;}
+.kd{color:#555;font-size:12px;margin:2px 0 2px;}
+.ke{color:#999;font-size:11px;font-style:italic;}
+.kdiv{border:none;border-top:.5px solid #eee;margin:8px 0 0;}
+
+.right{width:275px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;flex-shrink:0;padding:14px;}
+.right h3{font-size:10px;color:#666;margin-bottom:10px;letter-spacing:.08em;text-transform:uppercase;}
+.sec{margin-bottom:18px;}
+.sec label{font-size:11px;color:#aaa;display:block;margin-bottom:4px;}
+.inp{width:100%;padding:7px 9px;border-radius:6px;border:1px solid #0f3460;background:#0f3460;color:#eee;font-size:12px;font-family:inherit;}
+.inp:focus{outline:none;border-color:#5b5bd6;}
+textarea.inp{resize:vertical;min-height:56px;}
+.who-row{display:flex;gap:5px;margin-bottom:9px;}
+.wb{flex:1;padding:6px 2px;border-radius:6px;border:1px solid #0f3460;background:#0f3460;color:#aaa;font-size:11px;cursor:pointer;text-align:center;font-family:inherit;}
+.wb.a-me{background:#5b5bd6;color:#fff;border-color:#4a4ab8;}
+.wb.a-ol{background:#e8e8f8;color:#333;border-color:#c5c5e8;}
+.wb.a-ot{background:#fff;color:#333;border-color:#ccc;}
+.wb.a-in{background:#444;color:#eee;border-color:#666;}
+.type-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px;}
+.tb{padding:4px 9px;border-radius:5px;border:1px solid #0f3460;background:#0f3460;color:#aaa;font-size:10px;cursor:pointer;font-family:inherit;}
+.tb.active{background:#5b5bd6;color:#fff;border-color:#5b5bd6;}
+.rbtn{width:100%;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;margin-bottom:7px;}
+.rbtn.save{background:#5b5bd6;color:#fff;}
+.rbtn.del{background:#e06c75;color:#fff;}
+.rbtn.add{background:#98c379;color:#222;}
+.sel-info{font-size:11px;color:#777;background:#0f3460;border-radius:6px;padding:7px 9px;margin-bottom:9px;min-height:32px;}
+.stk-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:7px;}
+.stk-opt{aspect-ratio:1;background:#0f3460;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:26px;border:2px solid transparent;}
+.stk-opt:hover,.stk-opt.chosen{border-color:#8fa8b8;}
+.drop{border:2px dashed #0f3460;border-radius:7px;padding:10px;text-align:center;cursor:pointer;font-size:11px;color:#666;margin-top:7px;}
+.drop:hover{border-color:#8fa8b8;color:#8fa8b8;}
+input[type=file]{display:none;}
+.hint{font-size:10px;color:#444;margin-top:5px;}
+
+/* toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 18px;border-radius:20px;font-size:12px;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:999;}
+.toast.show{opacity:1;}
+
+.msg-group[draggable],.os-wrap[draggable]{cursor:grab;}
+.msg-dragging{opacity:0.35;}
+.msg-drag-over-top{border-top:2px solid #e5c07b!important;}
+.msg-drag-over-bottom{border-bottom:2px solid #e5c07b!important;}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<div class="slide-list">
+  <h3>图片 <span style="color:#555;font-size:9px;">可拖拽排序</span></h3>
+  <div id="slideList"></div>
+  <div style="padding:8px;display:flex;flex-direction:column;gap:5px;">
+    <button style="width:100%;padding:5px;font-size:10px;background:#98c379;color:#222;border:none;border-radius:5px;cursor:pointer;" onclick="addSlide()">+ 新增图</button>
+    <button style="width:100%;padding:5px;font-size:10px;background:#c678dd;color:#fff;border:none;border-radius:5px;cursor:pointer;" onclick="pasteSlide()" id="pasteBtn" disabled>📋 粘贴图</button>
+    <button style="width:100%;padding:5px;font-size:10px;background:#e5c07b;color:#222;border:none;border-radius:5px;cursor:pointer;" onclick="showImport()">⬆ 导入 JSON</button>
+    <button style="width:100%;padding:5px;font-size:10px;background:#3a3a5a;color:#aaa;border:1px solid #0f3460;border-radius:5px;cursor:pointer;" onclick="exportJSON()">⬇ 导出 JSON</button>
+  </div>
+</div>
+
+<div class="center">
+  <div class="top-bar">
+    <h2 id="slideLabel">图 1 / 9</h2>
+    <button class="btn btn-dup" onclick="duplicateCurrent()">⧉ 复制此图</button>
+    <button class="btn btn-dl" onclick="downloadCurrent()">下载此图</button>
+    <button class="btn btn-all" onclick="downloadAll()">⬇ 全部下载</button>
+  </div>
+  <div class="screen" id="chatScreen">
+    <div class="s-header">
+      <span class="s-back">‹</span>
+      <span class="s-name" id="screenName" onclick="editName()">闺蜜</span>
+    </div>
+    <div class="s-body" id="chatBody"></div>
+  </div>
+</div>
+
+<div class="right">
+  <div class="sec">
+    <h3>添加消息</h3>
+    <div class="who-row">
+      <button class="wb a-me" id="wMe" onclick="setSender('me')">我</button>
+      <button class="wb" id="wOt" onclick="setSender('ot')">其他</button>
+      <button class="wb" id="wIn" onclick="setSender('inner')">OS</button>
+    </div>
+    <div class="type-row">
+      <button class="tb active" id="tText" onclick="setType('text')">文字</button>
+      <button class="tb" id="tTr" onclick="setType('tr')">翻译</button>
+      <button class="tb" id="tSticker" onclick="setType('sticker')">贴纸/图片</button>
+    </div>
+    <div id="stickerPicker" style="display:none;">
+      <div class="stk-grid" id="stickerGrid"></div>
+      <div class="drop" onclick="document.getElementById('stickerUpload').click()">📁 上传图片或贴纸</div>
+      <input type="file" id="stickerUpload" accept="image/*" onchange="handleStickerUpload(event)">
+    </div>
+    <div id="textArea">
+      <label>内容</label>
+      <textarea class="inp" id="newMsg" placeholder="输入内容…"></textarea>
+      <label style="margin-top:7px;">时间戳（留空则不显示）</label>
+      <input class="inp" id="newTime" placeholder="如 19:31">
+    </div>
+    <button class="rbtn add" onclick="addMessage()" style="margin-top:8px;">添加 ↵</button>
+  </div>
+
+  <div class="sec" id="editSec" style="display:none;">
+    <h3>编辑选中气泡</h3>
+    <div class="sel-info" id="selInfo">点击气泡选中</div>
+    <label>内容</label>
+    <textarea class="inp" id="editMsg" style="margin-bottom:7px;"></textarea>
+    <label>时间戳（留空则不显示）</label>
+    <input class="inp" id="editTime" placeholder="如 19:31" style="margin-bottom:7px;">
+    <button class="rbtn save" onclick="applyEdit()">保存</button>
+    <button class="rbtn del" onclick="deleteSelected()">删除气泡</button>
+  </div>
+
+  <div class="sec">
+    <h3>页面设置</h3>
+    <label>联系人名字</label>
+    <input class="inp" id="nameInp" oninput="updateName(this.value)" style="margin-bottom:7px;">
+    <label>日期标签</label>
+    <input class="inp" id="dateInp" oninput="updateDate(this.value)" style="margin-bottom:7px;">
+    <label>背景色</label>
+    <input type="color" class="inp" id="bgColor" value="#f0f0f5" oninput="updateBg(this.value)" style="height:34px;padding:2px 5px;">
+  </div>
+
+  <div class="sec">
+    <h3>贴纸库</h3>
+    <div class="drop" onclick="document.getElementById('libUpload').click()">📁 添加图片到贴纸库</div>
+    <input type="file" id="libUpload" accept="image/*" multiple onchange="addToLibrary(event)">
+    <div class="stk-grid" id="libGrid" style="margin-top:7px;"></div>
+    <p class="hint">上传后在「贴纸/图片」类型里选用</p>
+  </div>
+</div>
+
+<script>
+const SLIDES=[
+  {name:'',date:'',bg:'#f0f0f5',msgs:[]},
+];
+
+let cur=0,selEl=null,selIdx=null,sender='me',type='text',chosenSticker=null,lib=[],clipboard=null;
+let dragSrc=null;
+const EMOJIS=['😂','🥹','😳','😭','🫣','💀','🤦','😅','❤️','☕','✨','🙏'];
+
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
+
+function deepClone(obj){return JSON.parse(JSON.stringify(obj));}
+
+function init(){
+  renderLib();
+  // 检查URL参数里有没有data
+  const params = new URLSearchParams(window.location.search);
+  const dataParam = params.get('data');
+  if(dataParam){
+    try{
+      const decoded = decodeURIComponent(dataParam);
+      const data = JSON.parse(decoded);
+      if(Array.isArray(data) && data.length > 0 && data.every(s=>s.msgs)){
+        data.forEach(s=>{s.name=s.name||'';s.date=s.date||'';s.bg=s.bg||'#f0f0f5';});
+        SLIDES.length=0;
+        data.forEach(s=>SLIDES.push(s));
+        renderList();
+        load(0);
+        toast('✓ 已自动导入 '+SLIDES.length+' 张图片');
+        return;
+      }
+    }catch(e){
+      console.warn('URL参数解析失败:', e);
+    }
+  }
+  renderList();
+  load(0);
+}
+
+// ── SLIDE LIST WITH DRAG ──
+function renderList(){
+  const l=document.getElementById('slideList');l.innerHTML='';
+  SLIDES.forEach((s,i)=>{
+    const d=document.createElement('div');
+    d.className='thumb'+(i===cur?' active':'');
+    d.draggable=true;
+    d.dataset.i=i;
+    d.innerHTML=`
+      <div class="num">图 ${i+1}</div>
+      <div class="prev" style="background:${s.bg};"><div class="prev-name">${s.name}</div></div>
+      <div class="thumb-actions">
+        <button class="ta-btn dup" title="复制" onclick="dupSlide(event,${i})">⧉</button>
+        <button class="ta-btn" title="删除" onclick="delSlide(event,${i})">×</button>
+      </div>`;
+    // drag events
+    d.addEventListener('dragstart',e=>{dragSrc=i;d.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+    d.addEventListener('dragend',()=>{d.classList.remove('dragging');document.querySelectorAll('.thumb').forEach(t=>t.classList.remove('drag-over'));});
+    d.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.thumb').forEach(t=>t.classList.remove('drag-over'));d.classList.add('drag-over');});
+    d.addEventListener('drop',e=>{
+      e.preventDefault();
+      d.classList.remove('drag-over');
+      if(dragSrc===null||dragSrc===i)return;
+      const moved=SLIDES.splice(dragSrc,1)[0];
+      const newIdx=dragSrc<i?i:i;
+      SLIDES.splice(dragSrc<i?i:i,0,moved);
+      cur=i<cur?cur-1:(dragSrc===cur?i:cur);
+      renderList();load(cur);
+      toast('顺序已更新');
+    });
+    d.onclick=e=>{if(e.target.classList.contains('ta-btn'))return;load(i);};
+    l.appendChild(d);
+  });
+  document.getElementById('pasteBtn').disabled=clipboard===null;
+}
+
+function dupSlide(e,idx){
+  e.stopPropagation();
+  const clone=deepClone(SLIDES[idx]);
+  SLIDES.splice(idx+1,0,clone);
+  renderList();load(idx+1);
+  toast('已复制到下一张');
+}
+
+function delSlide(e,idx){
+  e.stopPropagation();
+  if(SLIDES.length===1){toast('至少保留一张');return;}
+  if(!confirm(`确定删除图 ${idx+1}？`))return;
+  SLIDES.splice(idx,1);
+  const newCur=Math.min(cur,SLIDES.length-1);
+  renderList();load(newCur);
+  toast('已删除');
+}
+
+function duplicateCurrent(){
+  const clone=deepClone(SLIDES[cur]);
+  clipboard=clone;
+  SLIDES.splice(cur+1,0,deepClone(clone));
+  renderList();load(cur+1);
+  toast('✓ 已复制并插入到下一张');
+  document.getElementById('pasteBtn').disabled=false;
+}
+
+function pasteSlide(){
+  if(!clipboard)return;
+  SLIDES.splice(cur+1,0,deepClone(clipboard));
+  renderList();load(cur+1);
+  toast('✓ 已粘贴到下一张');
+}
+
+function addSlide(){SLIDES.push({name:'新对话',date:'',bg:'#f0f0f5',msgs:[]});renderList();load(SLIDES.length-1);}
+
+// ── LOAD ──
+function load(idx){
+  cur=idx;selEl=null;selIdx=null;
+  document.getElementById('editSec').style.display='none';
+  renderList();
+  const s=SLIDES[idx];
+  document.getElementById('slideLabel').textContent=`图 ${idx+1} / ${SLIDES.length}`;
+  document.getElementById('screenName').textContent=s.name;
+  document.getElementById('nameInp').value=s.name;
+  document.getElementById('dateInp').value=s.date||'';
+  document.getElementById('bgColor').value=s.bg;
+  document.getElementById('chatScreen').style.background=s.bg;
+  document.querySelector('.s-header').style.background=s.bg;
+  renderMsgs();
+}
+
+function dim(hex,a){let r=parseInt(hex.slice(1,3),16)+a,g=parseInt(hex.slice(3,5),16)+a,b=parseInt(hex.slice(5,7),16)+a;return'#'+[r,g,b].map(v=>Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');}
+function mk(tag,cls){const e=document.createElement(tag);if(cls)e.className=cls;return e;}
+
+// ── RENDER MESSAGES ──
+function renderMsgs(){
+  const body=document.getElementById('chatBody');
+  const s=SLIDES[cur];body.innerHTML='';
+  if(s.date){const dl=mk('div','date-row');dl.innerHTML=`<span onclick="editDate()">${s.date}</span>`;body.appendChild(dl);}
+  s.msgs.forEach((msg,i)=>body.appendChild(buildMsg(msg,i)));
+}
+
+function buildMsg(msg,idx){
+  if(msg.t==='know'){
+    const wrap=mk('div');wrap.style.cssText='padding:4px 0;position:relative;';
+    const card=mk('div','know');card.onclick=()=>selectEl(idx,card);
+    card.innerHTML=`<div class="know-title">📍 问路英语必备表达</div>
+      <div class="kw">Bear left / Bear right</div><div class="kd">稍微偏左/偏右方向走，不是急转弯</div><div class="ke">"Bear left at the junction and keep walking."</div>
+      <hr class="kdiv"><div class="kw">Just around the corner</div><div class="kd">就在附近，很快就能到</div><div class="ke">"The station is just around the corner."</div>
+      <hr class="kdiv"><div class="kw">You can't miss it</div><div class="kd">非常显眼，很容易找到</div><div class="ke">"It's a big red building — you can't miss it."</div>
+      <hr class="kdiv"><div class="kw">A stone's throw away</div><div class="kd">距离很近，步行即可到达</div><div class="ke">"The hotel is a stone's throw from the city centre."</div>`;
+    wrap.appendChild(card);
+    const db=mk('button','del-btn');db.textContent='×';db.onclick=()=>delMsg(idx);wrap.appendChild(db);
+    return wrap;
+  }
+  if(msg.s==='inner'){
+    const wrap=mk('div','os-wrap');wrap.style.cssText='position:relative;';
+    const d=mk('div','os-line');d.textContent=msg.text;d.onclick=()=>selectEl(idx,d);
+    const db=mk('button','del-btn');db.textContent='×';db.onclick=()=>delMsg(idx);
+    wrap.appendChild(d);wrap.appendChild(db);addMsgDrag(wrap,idx);return wrap;
+  }
+  const isMe=msg.s==='me';
+  const group=mk('div','msg-group'+(isMe?' me':''));group.dataset.idx=idx;
+
+  const col=mk('div','bubbles');
+  let bc=isMe?'me':(msg.s==='ol'?'ol':'ot');
+  if(msg.t==='tr')bc='tr'+(isMe?' me':'');
+  let bub;
+  if(msg.t==='sticker'){
+    bub=mk('div','bub sticker');
+    const isEmoji=msg.text&&!msg.text.startsWith('data:')&&!msg.text.startsWith('http');
+    if(isEmoji){const sp=mk('span','emo');sp.textContent=msg.text;bub.appendChild(sp);}
+    else{const im=mk('img');im.src=msg.text;im.style.cssText='width:80px;height:80px;object-fit:contain;border-radius:6px;';bub.appendChild(im);}
+  }else{bub=mk('div',`bub ${bc}`);bub.textContent=msg.text||'';}
+  bub.onclick=()=>selectEl(idx,bub);col.appendChild(bub);
+  if(msg.time){const ts=mk('div','ts');ts.textContent=msg.time;col.appendChild(ts);}
+  group.appendChild(col);
+  const db=mk('button','del-btn');db.textContent='×';db.onclick=()=>delMsg(idx);group.appendChild(db);
+  addMsgDrag(group,idx);
+  return group;
+}
+
+function selectEl(idx,el){
+  if(selEl)selEl.classList.remove('sel');
+  selEl=el;selIdx=idx;el.classList.add('sel');
+  const msg=SLIDES[cur].msgs[idx];
+  document.getElementById('editSec').style.display='block';
+  document.getElementById('selInfo').textContent=`图${cur+1} · 第${idx+1}条 · ${msg.s}`;
+  document.getElementById('editMsg').value=msg.text||'';
+  document.getElementById('editTime').value=msg.time||'';
+}
+function applyEdit(){
+  if(selIdx===null)return;
+  const msg=SLIDES[cur].msgs[selIdx];
+  msg.text=document.getElementById('editMsg').value;
+  const t=document.getElementById('editTime').value.trim();
+  if(t) msg.time=t; else delete msg.time;
+  renderMsgs();
+  document.getElementById('editSec').style.display='none';
+  selEl=null;selIdx=null;
+}
+function delMsg(idx){SLIDES[cur].msgs.splice(idx,1);renderMsgs();document.getElementById('editSec').style.display='none';}
+function deleteSelected(){if(selIdx!==null)delMsg(selIdx);}
+function setSender(s){sender=s;['Me','Ol','Ot','In'].forEach(x=>document.getElementById('w'+x).className='wb');const map={me:'a-me',ol:'a-ol',ot:'a-ot',inner:'a-in'};document.getElementById('w'+s.charAt(0).toUpperCase()+s.slice(1)).className='wb '+map[s];}
+function setType(t){type=t;['Text','Tr','Sticker'].forEach(x=>document.getElementById('t'+x).classList.remove('active'));document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1)).classList.add('active');document.getElementById('stickerPicker').style.display=t==='sticker'?'block':'none';document.getElementById('textArea').style.display=t==='sticker'?'none':'block';if(t==='sticker')renderStkPicker();}
+function addMessage(){const s=SLIDES[cur];const time=document.getElementById('newTime').value.trim();if(type==='sticker'){if(!chosenSticker){toast('请先选择一个贴纸或图片');return;}s.msgs.push({s:sender,t:'sticker',text:chosenSticker,time:time||undefined});}else{const text=document.getElementById('newMsg').value.trim();if(!text)return;const msg={s:sender,t:type,text,time:time||undefined};s.msgs.push(msg);document.getElementById('newMsg').value='';}document.getElementById('newTime').value='';renderMsgs();}
+function updateName(v){SLIDES[cur].name=v;document.getElementById('screenName').textContent=v;renderList();}
+function updateDate(v){SLIDES[cur].date=v;renderMsgs();}
+function updateBg(v){SLIDES[cur].bg=v;document.getElementById('chatScreen').style.background=v;document.querySelector('.s-header').style.background=v;renderList();}
+function editName(){const n=prompt('修改联系人名字：',SLIDES[cur].name);if(n){document.getElementById('nameInp').value=n;updateName(n);}}
+function editDate(){const d=prompt('修改日期：',SLIDES[cur].date);if(d!=null){document.getElementById('dateInp').value=d;updateDate(d);}}
+function renderLib(){const g=document.getElementById('libGrid');g.innerHTML='';lib.forEach(src=>{const d=mk('div','stk-opt');d.innerHTML=`<img src="${src}" style="width:100%;height:100%;object-fit:contain;border-radius:5px;">`;d.onclick=()=>pickSticker(src,d);g.appendChild(d);});}
+function renderStkPicker(){const g=document.getElementById('stickerGrid');g.innerHTML='';EMOJIS.forEach(e=>{const d=mk('div','stk-opt');d.textContent=e;d.onclick=()=>pickSticker(e,d);g.appendChild(d);});lib.forEach(src=>{const d=mk('div','stk-opt');d.innerHTML=`<img src="${src}" style="width:100%;height:100%;object-fit:contain;border-radius:5px;">`;d.onclick=()=>pickSticker(src,d);g.appendChild(d);});}
+function pickSticker(val,el){chosenSticker=val;document.querySelectorAll('.stk-opt').forEach(e=>e.classList.remove('chosen'));el.classList.add('chosen');}
+function handleStickerUpload(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{chosenSticker=ev.target.result;lib.push(ev.target.result);renderLib();renderStkPicker();const opts=document.querySelectorAll('#stickerGrid .stk-opt');if(opts.length)opts[opts.length-1].classList.add('chosen');};reader.readAsDataURL(file);e.target.value='';}
+function addToLibrary(e){Array.from(e.target.files).forEach(file=>{const reader=new FileReader();reader.onload=ev=>{lib.push(ev.target.result);renderLib();};reader.readAsDataURL(file);});e.target.value='';}
+async function downloadCurrent(){const el=document.getElementById('chatScreen');const c=await html2canvas(el,{scale:3,useCORS:true,allowTaint:true,backgroundColor:null});const a=document.createElement('a');a.download=`图${String(cur+1).padStart(2,'0')}.png`;a.href=c.toDataURL('image/png');a.click();}
+async function downloadAll(){const btn=document.querySelector('.btn-all');btn.textContent='生成中…';btn.disabled=true;const zip=new JSZip();const saved=cur;for(let i=0;i<SLIDES.length;i++){load(i);await new Promise(r=>setTimeout(r,500));const el=document.getElementById('chatScreen');const c=await html2canvas(el,{scale:3,useCORS:true,allowTaint:true,backgroundColor:null});const blob=await new Promise(r=>c.toBlob(r,'image/png'));zip.file(`图${String(i+1).padStart(2,'0')}.png`,blob);}const content=await zip.generateAsync({type:'blob'});const a=document.createElement('a');a.download='聊天图片.zip';a.href=URL.createObjectURL(content);a.click();load(saved);btn.textContent='⬇ 全部下载';btn.disabled=false;}
+
+// ── BUBBLE DRAG ──
+let msgDragSrc=null;
+function addMsgDrag(el,idx){
+  el.draggable=true;
+  el.addEventListener('dragstart',e=>{msgDragSrc=idx;el.classList.add('msg-dragging');e.dataTransfer.effectAllowed='move';});
+  el.addEventListener('dragend',()=>{el.classList.remove('msg-dragging');document.querySelectorAll('.msg-drag-over-top,.msg-drag-over-bottom').forEach(e=>e.classList.remove('msg-drag-over-top','msg-drag-over-bottom'));});
+  el.addEventListener('dragover',e=>{
+    e.preventDefault();
+    document.querySelectorAll('.msg-drag-over-top,.msg-drag-over-bottom').forEach(e=>e.classList.remove('msg-drag-over-top','msg-drag-over-bottom'));
+    const rect=el.getBoundingClientRect();
+    if(e.clientY<rect.top+rect.height/2) el.classList.add('msg-drag-over-top');
+    else el.classList.add('msg-drag-over-bottom');
+  });
+  el.addEventListener('dragleave',()=>el.classList.remove('msg-drag-over-top','msg-drag-over-bottom'));
+  el.addEventListener('drop',e=>{
+    e.preventDefault();
+    el.classList.remove('msg-drag-over-top','msg-drag-over-bottom');
+    if(msgDragSrc===null||msgDragSrc===idx)return;
+    const msgs=SLIDES[cur].msgs;
+    const moved=msgs.splice(msgDragSrc,1)[0];
+    const rect=el.getBoundingClientRect();
+    let target=msgDragSrc<idx?idx-1:idx;
+    if(e.clientY>=rect.top+rect.height/2) target=msgDragSrc<idx?idx:idx+1;
+    msgs.splice(target,0,moved);
+    msgDragSrc=null;
+    renderMsgs();
+    toast('顺序已更新');
+  });
+}
+
+// ── IMPORT / EXPORT ──
+function showImport(){
+  document.getElementById('importText').value='';
+  document.getElementById('importErr').textContent='';
+  const m=document.getElementById('importModal');
+  m.style.display='flex';
+  setTimeout(()=>document.getElementById('importText').focus(),100);
+}
+function closeImport(){document.getElementById('importModal').style.display='none';}
+function confirmImport(){
+  const raw=document.getElementById('importText').value.trim();
+  const err=document.getElementById('importErr');
+  err.textContent='';
+  if(!raw){err.textContent='请粘贴 JSON 内容';return;}
+  let data;
+  try{
+    let clean=raw.replace(/```json/g,'').replace(/```/g,'').trim();
+    const start=clean.indexOf('[');
+    const end=clean.lastIndexOf(']');
+    if(start===-1||end===-1){err.textContent='找不到 JSON 数组，确保内容以 [ 开头、] 结尾';return;}
+    clean=clean.slice(start,end+1);
+    data=JSON.parse(clean);
+  }catch(e){err.textContent='JSON 格式有误：'+e.message;return;}
+  if(!Array.isArray(data)||data.length===0){err.textContent='需要是一个数组 [ ... ]';return;}
+  if(!data.every(s=>s.msgs&&Array.isArray(s.msgs))){err.textContent='每个图片对象都需要有 msgs 数组';return;}
+  data.forEach(s=>{s.name=s.name||'';s.date=s.date||'';s.bg=s.bg||'#f0f0f5';});
+  SLIDES.length=0;
+  data.forEach(s=>SLIDES.push(s));
+  closeImport();
+  renderList();
+  load(0);
+  toast('✓ 已导入 '+SLIDES.length+' 张图片');
+}
+function exportJSON(){
+  const json=JSON.stringify(SLIDES,null,2);
+  const blob=new Blob([json],{type:'application/json'});
+  const a=document.createElement('a');
+  a.download='slides.json';
+  a.href=URL.createObjectURL(blob);
+  a.click();
+  toast('✓ JSON 已导出');
+}
+
+init();
+</script>
+
+<!-- Import Modal -->
+<div id="importModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:#16213e;border:1px solid #0f3460;border-radius:14px;padding:24px;width:520px;max-width:90vw;">
+    <div style="font-size:14px;font-weight:600;color:#eee;margin-bottom:6px;">⬆ 导入 JSON</div>
+    <div style="font-size:11px;color:#666;margin-bottom:12px;">把 Claude 生成的 JSON 粘贴到下方，点确认即可一键导入全部内容。导入后会<span style="color:#e06c75;">替换</span>当前所有图片。</div>
+    <textarea id="importText" style="width:100%;height:220px;background:#0f3460;border:1px solid #1a3a6e;border-radius:8px;color:#eee;font-size:11px;font-family:monospace;padding:10px;resize:vertical;line-height:1.6;" placeholder="粘贴 JSON 内容…"></textarea>
+    <div id="importErr" style="color:#e06c75;font-size:11px;margin-top:8px;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button onclick="confirmImport()" style="flex:1;padding:9px;background:#e5c07b;color:#222;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">✓ 确认导入</button>
+      <button onclick="closeImport()" style="flex:1;padding:9px;background:#0f3460;color:#aaa;border:1px solid #1a3a6e;border-radius:7px;font-size:13px;cursor:pointer;">取消</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
